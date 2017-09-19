@@ -3,10 +3,15 @@
 14CORE ULTRASONIC DISTANCE SENSOR CODE TEST
 ********************************************
 */
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
 #define TRIGGER 12
 #define ECHO    13
  
 // NodeMCU Pin D1 > TRIGGER | Pin D2 > ECHO
+
+LiquidCrystal_I2C lcd(0x3F,16,2);
  
 void setup() {
   
@@ -14,11 +19,22 @@ void setup() {
   pinMode(TRIGGER, OUTPUT);
   pinMode(ECHO, INPUT);
   //pinMode(BUILTIN_LED, OUTPUT);
+
+  lcd.init();   
+  delayMicroseconds(10);
+  lcd.backlight();
+
 }
  
 void loop() {
   
   long duration, distance;
+
+  lcd.setCursor(0,0);
+  lcd.print("TESTE");
+  lcd.setCursor(0,1);
+  lcd.print("TESTE 2");
+  
   digitalWrite(TRIGGER, LOW);  
   delayMicroseconds(2); 
   
