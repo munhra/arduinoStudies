@@ -34,20 +34,71 @@ int IO_8 = 29;
 int ioPins[] = {IO_1,IO_2,IO_3,IO_4,IO_5,IO_6,IO_7,IO_8};
 
 int CE = 51; 
-//int OE = 52; 
+int OE = 52; 
 
-int maxAddressNumber = 64; //65536;
+int maxAddressNumber = 128; //65536;
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  //readTest();
+  readTest();
   //writeTest();
-  simpleWrite();
+  //simpleWriteMC27256();
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+}
+
+void simpleWriteMC27256() {
+
+  
+  Serial.println("******** Write Test ... *********");
+  pinMode(CE, OUTPUT);
+  pinMode(OE, OUTPUT);
+  digitalWrite(OE, HIGH);
+  digitalWrite(CE,LOW);
+  //16384
+  for (int j = 0 ; j < maxAddressNumber ; j++) {
+ 
+    for (int ad = 0 ; ad < 15 ; ad++ ) {
+        digitalWrite(addressPins[ad],LOW);
+    }
+
+    String binaryRepresentation = "";  
+    int num = j;
+    for (int i = 0 ; i < 14 ; i++) {
+        //int num = j;
+        if (num % 2) {
+          binaryRepresentation = "1" + binaryRepresentation;  
+          digitalWrite(addressPins[i],HIGH);
+        }else{
+          binaryRepresentation = "0" + binaryRepresentation;  
+          digitalWrite(addressPins[i],LOW);
+        }
+        num = num / 2;
+    }
+
+    for (int d = 0 ; d < 8 ; d++) {
+      pinMode(ioPins[d], OUTPUT); 
+    }
+
+    for (int d = 0 ; d < 8 ; d++) {
+      if (d < 5)
+        digitalWrite(ioPins[d],LOW);
+      else
+        digitalWrite(ioPins[d],HIGH);
+    }
+
+    digitalWrite(CE,LOW);
+    delayMicroseconds(200);
+    digitalWrite(CE,HIGH);
+    delayMicroseconds(200);
+    digitalWrite(CE,LOW);
+    
+    Serial.println("Number "+String(j)+" -> "+binaryRepresentation);    
+      
+  }
 }
 
 void simpleWrite() {
@@ -104,7 +155,7 @@ void writeTest() {
   //delay(2000);
   Serial.println("******** Write Test ... *********");
   pinMode(CE, OUTPUT);
-  //pinMode(OE, OUTPUT);
+  pinMode(OE, OUTPUT);
   
   //16384
   for (int j = 0 ; j < maxAddressNumber ; j++) {
@@ -131,7 +182,7 @@ void writeTest() {
 
    //Verification loop
     for (int n = 0 ; n < 100 ; n ++) {
-      //digitalWrite(OE,LOW);
+      digitalWrite(OE,HIGH);
       //Change pins to output to send data
       for (int d = 0 ; d < 8 ; d++) {
          pinMode(ioPins[d], OUTPUT); 
@@ -162,14 +213,19 @@ void writeTest() {
         readBit = digitalRead(ioPins[d]);
         bitWrite(readByte,d,readBit);
       }
+      
+      delay(1000);
+      
+      digitalWrite(OE,LOW);
 
+      delay(2000);
       //if data verified break the verification loop
       if (readByte == 0xFF) {
         Serial.println("Byte verified");  
         break;
       }
-    
-    
+      
+      
     
     }
 

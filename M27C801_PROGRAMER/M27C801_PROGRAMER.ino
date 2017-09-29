@@ -1,3 +1,5 @@
+#include <LiquidCrystal_I2C.h>
+
 //ADDRESS
 int ADDRESS_0 = 30;
 int ADDRESS_1 = 31;
@@ -41,21 +43,143 @@ int ioPins[] = {IO_0,IO_1,IO_2,IO_3,IO_4,IO_5,IO_6,IO_7};
 int CE = 51; 
 int OE = 52; 
 
-int maxAddressNumber = 64; //65536;
+unsigned long maxAddressNumber = 65536; //65536;
+
+int j = 0; // Memory index address;
+bool failed = false;
+
+LiquidCrystal_I2C lcd(0x3F,16,2);
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  readTest();
+  //readTest();
+  lcd.init();   
+  delayMicroseconds(10);
+  lcd.backlight();
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+  lcd.setCursor(0,0);
+  lcd.print("ADDR = ");
+  lcd.setCursor(7,0);
+  lcd.print(j);
+  //lcd.setCursor(0,1);
+  //lcd.print("MEMORY DATA = ");
+  
+  if ((j < maxAddressNumber) && (!failed)){
+    String hexData = readTestInLoop();
+    
+    
+    
+    if (hexData != "ff") {
+      failed = true;
+    }
+    
+    //Serial.println("ADD "+String(j)+" -> "+hexData);  
+    lcd.setCursor(0,1);
+    lcd.print("DATA = ");
+    lcd.setCursor(7,1);
+    lcd.print(hexData);
+
+    
+  
+    //delayMicroseconds(100);
+    //delay(1000);
+    j++; //summ memory 
+
+  }else{
+
+    String hexData = readTestInLoop();
+    //Serial.println("ADD "+String(j)+" -> "+hexData); 
+    lcd.setCursor(0,1);
+    lcd.print("DATA = ");
+    lcd.setCursor(7,1);
+    lcd.print(hexData);
+    lcd.setCursor(11,1);
+    lcd.print("END");
+  
+    //stop
+    //lcd.clear();
+    //lcd.setCursor(0,0);
+    //lcd.print("READ ENDED");
+  }
+
+  //delay(1000);
+  //delayMicroseconds(500);
+  
+}
+
+String readTestInLoop() {
+
+  //Serial.println("********* Starting ... ********");
+  //delay(10000);
+  //Serial.println("********* Read Test ... ********");
+
+  
+  pinMode(CE, OUTPUT);
+  pinMode(OE, OUTPUT);
+  
+  //digitalWrite(CE,HIGH);
+  //digitalWrite(OE,HIGH);
+  
+  for (int d = 0 ; d < 8 ; d++) {
+    pinMode(ioPins[d], INPUT); //INPUT_PULLUP 
+  }
+
+  //16384
+  //for (int j = 0 ; j < maxAddressNumber ; j++) {
+    
+    digitalWrite(CE,HIGH);
+    digitalWrite(OE,HIGH);
+    delayMicroseconds(1);
+    
+    String binaryRepresentation = ""; 
+    String readBinartRepresentation = "";
+    String readHEXRepresentation = "";
+    
+    int num = j;
+    for (int i = 0 ; i < 15 ; i++) {
+        //int num = j;
+        if (num % 2) {
+          binaryRepresentation = "1" + binaryRepresentation;  
+          digitalWrite(addressPins[i],HIGH);
+        }else{
+          binaryRepresentation = "0" + binaryRepresentation;  
+          digitalWrite(addressPins[i],LOW);
+        }
+        num = num / 2;
+    }
+    //delay(100);
+    digitalWrite(CE,LOW);
+    digitalWrite(OE,LOW);
+    delayMicroseconds(1); //was 100
+    //Write FF on IO
+    
+    boolean readBit;
+    byte readByte;
+    
+    for (int d = 0 ; d < 8 ; d++) {
+      readBit = digitalRead(ioPins[d]);
+      readBinartRepresentation = readBinartRepresentation + String(readBit);
+      bitWrite(readByte,d,readBit);
+      
+    }
+    readHEXRepresentation = String(readByte,HEX);
+    //Serial.println("Number "+String(j)+" -> "+binaryRepresentation);
+    //Serial.println("Number "+String(j)+" -> "+readBinartRepresentation);  
+    //Serial.println("Number "+String(j)+" -> "+readHEXRepresentation);    
+  //}
+
+  return readHEXRepresentation;
+  
 }
 
 void readTest() {
-
-  delay(2000);
+  Serial.println("********* Starting ... ********");
+  delay(10000);
   Serial.println("********* Read Test ... ********");
 
   
@@ -95,7 +219,7 @@ void readTest() {
     //delay(100);
     digitalWrite(CE,LOW);
     digitalWrite(OE,LOW);
-    delayMicroseconds(100);
+    delayMicroseconds(100); //was 100
     //Write FF on IO
     
     boolean readBit;
@@ -111,5 +235,7 @@ void readTest() {
     Serial.println("Number "+String(j)+" -> "+binaryRepresentation);
     Serial.println("Number "+String(j)+" -> "+readBinartRepresentation);  
     Serial.println("Number "+String(j)+" -> "+readHEXRepresentation);    
+  
+    //return readHEXRepresentation;
   }
 }
