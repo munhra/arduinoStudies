@@ -8,11 +8,11 @@
 //****************************************************************
 
 //Pin connected to ST_CP of 74HC595
-int latchPin = 8;
+int latchPin = 13;
 //Pin connected to SH_CP of 74HC595
-int clockPin = 12;
+int clockPin = 11;
 ////Pin connected to DS of 74HC595
-int dataPin = 11;
+int dataPin = 12;
 
 //holders for infromation you're going to pass to shifting function
 byte dataRED;
