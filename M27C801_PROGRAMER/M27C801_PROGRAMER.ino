@@ -1,4 +1,6 @@
 #include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <SD.h>
 
 //ADDRESS
 
@@ -41,7 +43,7 @@ int SNES_ADDRESS_12 = 42;
 int SNES_ADDRESS_13 = 43;
 int SNES_ADDRESS_14 = 44;
 int SNES_ADDRESS_15 = 45;
-int SNES_ADDRESS_16 = 52;  //change to ADDRESS_18 pin 48
+int SNES_ADDRESS_16 = A14;  //change to ADDRESS_18 pin 48 changed to A14
 int SNES_ADDRESS_17 = 49;  //chante to ADDRESS_19 pin 49
 int SNES_ADDRESS_18 = 46;  //change to ADDRESS_OE pin 52
 int SNES_ADDRESS_19 = 47;  //change to ADDRESS_17 pin 47
@@ -69,268 +71,378 @@ int IO_7 = 29;
 
 int ioPins[] = {IO_0,IO_1,IO_2,IO_3,IO_4,IO_5,IO_6,IO_7};
 
-int CE = 51; // Chip select E
-int OE = 52; //Output Enable Program Supply G/VPP set to 
+int CE = A15; // Chip select E it was 51 due to SD incompatibility changed to A15
+int OE = A14; //Output Enable Program Supply G/VPP set to changed to A14 due SD incompatibility
 
-int SNES_CE = 51; 
+int SNES_CE = A15;  //change from 51 to 53 due SD incompatiblity and now to A15
 int SNES_OE = 48; //change to ADDRESS_16 pin 48
 
 
 //Program VCC 6.25 +- 0.25
 //VPP = 12.75 +-
 
-unsigned long maxAddressNumber = 1; //65536;
+unsigned long maxAddressNumber = 1048575; //65536 //1048575 //491520 ; 
+unsigned long StartTime = millis();
 
-int j = 0; // Memory index address;
+unsigned long j = 0; // Memory index address;
 bool failed = false;
+bool readSDCardOnce = true;
+
+int timeSeconds = 0;
+unsigned long ElapsedTime = 0;
+
+int BUFFER_SIZE = 1024;
+
+byte writeBuffer[1024];
+byte readBuffer[1024];
+byte readByteFromRom;
+long readSDPosition = 0;
+long bufferIndex = 0;
+
+File dumpRomFile;
+File myFile;
 
 LiquidCrystal_I2C lcd(0x3F,16,2);
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  //readTest();
-  lcd.init();   
-  delayMicroseconds(10);
-  lcd.backlight();
+  delay(1000);
+  
+  //lcd.init();   
+  //delayMicroseconds(10);
+  //lcd.backlight();
   
   for (int i = 0 ; i < 19 ; i++) {
     pinMode(SNES_addressPins[i], OUTPUT);
   }
 
+  /*
+  for (int i = 0 ; i < 19 ; i++) {
+    pinMode(addressPins[i], OUTPUT);
+  }*/
+
+  for (int d = 0 ; d < 8 ; d++) {
+    pinMode(ioPins[d], INPUT); //INPUT
+  }
+  
+  initializeSDCardDevice();
+  Serial.println("Beginning read ...");
+  delay(5000);
+  readSDCardTest(0,1024);
+  Serial.println("Control file read end ...");
+}
+
+void readSDCardTest(unsigned long startIndex, long bytesQtd) {
+  myFile = SD.open("NHL.BIN");
+  int readBufferIndex = 0;
+  Serial.println("Control File Start Position => "+String(startIndex));
+  myFile.seek(startIndex);
+  myFile.read(readBuffer,bytesQtd);
+  myFile.close();  
+}
+
+void initializeSDCardDevice() {
+  if (!SD.begin(4)) {
+    Serial.println("initialization failed!");
+  }else{
+    Serial.println("initialization success!");
+    if (SD.exists("ROM.BIN")) {
+      SD.remove("ROM.BIN");
+    }
+    dumpRomFile = SD.open("ROM.BIN",FILE_WRITE);
+    if (SD.exists("ROM.BIN")) {
+      Serial.println("File exists !!!");
+    }else{
+       Serial.println("File does not exists !!!");  
+    }
+  }
+}
+
+void readCompleteSNESRomLoop() {
+
+   //if ((j < maxAddressNumber) && (ElapsedTime <= 30000)){
+  if ((j < maxAddressNumber) && (!(failed))){
+    
+    readByteFromRom = readSNESInLoop();
+    
+    //Serial.println("Address => " + String(j)+" Data => "+hexData);
+    //Serial.println("Address => "+String(j)+" Control Buffer => "+String(readBuffer[j],HEX)+" Write Buffer => "+String(writeBuffer[j],HEX));
+    if ((readBuffer[bufferIndex] != readByteFromRom)) {
+      //failed = true;
+      //try again on the same address  
+      Serial.println("Address => "+String(j)+" Control Buffer => "+String(readBuffer[bufferIndex],HEX)+" Write Buffer => "+String(readByteFromRom,HEX));
+    }else{
+      //DATA WAS CORRECT SAVE AND GO TO NEXT ADDRESS
+      
+      writeBuffer[bufferIndex] = readByteFromRom;
+      
+      if (bufferIndex + 1 == BUFFER_SIZE) {
+        bufferIndex = 0;
+        dumpRomFile.write(writeBuffer,BUFFER_SIZE);
+        dumpRomFile.flush();
+        readSDPosition++;
+        readSDCardTest((1024 * readSDPosition),1024);
+      }else{
+        bufferIndex++;
+      }
+      
+      j++;
+
+      
+    }
+    calculateTime();
+  }else{
+    //Serial.println(j);
+    if (readSDCardOnce) {
+      
+      if (failed) {
+        Serial.println("Failed at address "+String(j));  
+      }else{
+        Serial.println("Success last address "+String(j)); 
+      }
+      
+      
+      dumpRomFile.close();
+      //Serial.println("Reading file !");
+      //readSDCardTest();
+      readSDCardOnce = false;
+    }
+  }
+  
 }
 
 void loop() {
-  
-  //lcd.setCursor(0,0);
-  //lcd.print("ADDR = ");
-  //lcd.setCursor(7,0);
-  //lcd.print(j);
-  
-  String hexData = readSNESInLoop();
-  Serial.println(hexData);
-  
-  /*
-  if ((j < maxAddressNumber) && (!failed)){
-    String hexData = readSNESInLoop();
+  //readCompleteSNESRomLoop();
+  //testEmptyEPROM();
 
+  readCompleteSNESRomLoop();
+
+/*
+  byte readTest = testEmptyEPROM();
+  if (255 != readTest) {
+    Serial.println("Empty ROM failed !!! Wrong DATA => "+String(readTest,HEX));    
+  }*/
+}
+
+float calculateTime() {
+  unsigned long CurrentTime = millis();
+  ElapsedTime = CurrentTime - StartTime;
+  return ElapsedTime/1000;
+}
+
+void testEmptyEPROM() {
+
+   //if ((j < maxAddressNumber) && (ElapsedTime <= 30000)){
+  if ((j < maxAddressNumber) && (!(failed))){
     
-    if (hexData != "ff") {
-      failed = true;
+    readByteFromRom = readEPROM();
+    
+    //Serial.println("Address => " + String(j)+" Data => "+hexData);
+    //Serial.println("Address => "+String(j)+" Control Buffer => "+String(readBuffer[j],HEX)+" Write Buffer => "+String(writeBuffer[j],HEX));
+    
+    if (j % 1024 == 0) {
+      Serial.println("Sucess read Address => "+String(j)+" Read Buffer => "+String(readByteFromRom,HEX));  
     }
     
-    lcd.setCursor(0,1);
-    lcd.print("DATA = ");
-    lcd.setCursor(7,1);
-    lcd.print(hexData);
-    Serial.println(hexData);
-    j++; //summ memory 
+    if ((255 != readByteFromRom)) {
+      //failed = true;
+      //try again on the same address  
+      Serial.println("Address => "+String(j)+" Read Buffer => "+String(readByteFromRom,HEX));
+    }else{
+      //DATA WAS CORRECT SAVE AND GO TO NEXT ADDRESS
+     
+      j++;
 
+      
+    }
+    calculateTime();
   }else{
-
-    String hexData = readSNESInLoop();
-    
-    lcd.setCursor(0,1);
-    lcd.print("DATA = ");
-    lcd.setCursor(7,1);
-    lcd.print(hexData);
-    Serial.println(hexData);
-    lcd.setCursor(11,1);
-    lcd.print("END");
-  
-  }*/
-
-  delay(1000);
-}
-
-void readOnlyOneAddress() {
-  
-}
-
-String readSNESInLoop() {
-  
-  pinMode(SNES_CE, OUTPUT);
-  pinMode(SNES_OE, OUTPUT);
-   
-  for (int d = 0 ; d < 8 ; d++) {
-    pinMode(ioPins[d], INPUT_PULLUP); //INPUT
+    //Serial.println(j);
+    if (readSDCardOnce) {
+      
+      if (failed) {
+        Serial.println("Failed at address "+String(j));  
+      }else{
+        Serial.println("Success last address "+String(j)); 
+      }
+      
+      
+      
+      //Serial.println("Reading file !");
+      //readSDCardTest();
+      readSDCardOnce = false;
+    }
   }
+  
+}
 
-  //digitalWrite(SNES_CE,HIGH);
-  //digitalWrite(SNES_OE,HIGH);
-  //delayMicroseconds(10000);
-    
+byte readEPROM() {
+  pinMode(CE, OUTPUT);
+  pinMode(OE, OUTPUT);
+
   String binaryRepresentation = ""; 
   String readBinartRepresentation = "";
   String readHEXRepresentation = "";
 
-  /*
-  int num = j;
-  for (int i = 0 ; i < 18 ; i++) {
-    if (num % 2) {
-      binaryRepresentation = "1" + binaryRepresentation;  
-      digitalWrite(SNES_addressPins[i],HIGH);
-     }else{
-      binaryRepresentation = "0" + binaryRepresentation;  
-      digitalWrite(SNES_addressPins[i],LOW);
-     }
-     num = num / 2;
-  }*/
-
-  for (int i = 0 ; i < 19 ; i++) {
-    delayMicroseconds(1000);
-
-
-    if (i == 0) {
-      digitalWrite(SNES_addressPins[i],HIGH);
-    }else{
-      digitalWrite(SNES_addressPins[i],LOW);  
-    }
-    
-    
-    delayMicroseconds(1000); 
+  for (int d = 0 ; d < 8 ; d++) {
+    pinMode(ioPins[d], INPUT_PULLUP); //INPUT
   }
 
-  //Serial.println("address => "+binaryRepresentation);
+  unsigned long num = j;
+  for (int i = 0 ; i < 19 ; i++) {
+    if (num % 2) {
+      //binaryRepresentation = "1" + binaryRepresentation;  
+      digitalWrite(addressPins[i],HIGH);
+     }else{
+      //binaryRepresentation = "0" + binaryRepresentation;  
+      digitalWrite(addressPins[i],LOW);
+     }
+     num = num / 2;
+  }
   
-  //delayMicroseconds(1000);
-  digitalWrite(SNES_CE,LOW);
-  delayMicroseconds(1000);
-  digitalWrite(SNES_OE,LOW);
-  delayMicroseconds(10000); //was 100
+  //delayMicroseconds(100);
+  digitalWrite(CE,LOW);
+  //delayMicroseconds(100);
+  digitalWrite(OE,LOW);
+  //delayMicroseconds(100); //was 100
     
   boolean readBit = false;
   byte readByte = 0;
     
   for (int d = 0 ; d < 8 ; d++) {
-    delayMicroseconds(1000);
     readBit = digitalRead(ioPins[d]);
-    readBinartRepresentation = readBinartRepresentation + String(readBit);
     bitWrite(readByte,d,readBit);
     readBit = false;
   }
 
-  readHEXRepresentation = String(readByte,HEX); 
-
-  /*
-  if (readByte < 16) {
-    readHEXRepresentation = readHEXRepresentation + "0";
-  }*/
-    
-  //delayMicroseconds(100);
-  //digitalWrite(SNES_CE,LOW);
-  //digitalWrite(SNES_OE,LOW);
-  //delayMicroseconds(100); //was 100
- 
-  return readHEXRepresentation;
+  return readByte;
 }
 
-String readTestInLoop() {
+byte readSNESInLoop() {
+  
+  pinMode(SNES_CE, OUTPUT);
+  pinMode(SNES_OE, OUTPUT);
 
-  pinMode(CE, OUTPUT);
-  pinMode(OE, OUTPUT);
-   
-  for (int d = 0 ; d < 8 ; d++) {
-    pinMode(ioPins[d], INPUT);
-  }
-
-  digitalWrite(CE,HIGH);
-  digitalWrite(OE,HIGH);
-  delayMicroseconds(1);
-    
   String binaryRepresentation = ""; 
   String readBinartRepresentation = "";
   String readHEXRepresentation = "";
-    
-  int num = j;
-  for (int i = 0 ; i < 18 ; i++) {
+
+  for (int d = 0 ; d < 8 ; d++) {
+    pinMode(ioPins[d], INPUT_PULLUP); //INPUT
+  }
+
+  unsigned long num = j;
+  for (int i = 0 ; i < 19 ; i++) {
     if (num % 2) {
-      binaryRepresentation = "1" + binaryRepresentation;  
-      digitalWrite(addressPins[i],HIGH);
+      //binaryRepresentation = "1" + binaryRepresentation;  
+      digitalWrite(SNES_addressPins[i],HIGH);
      }else{
-      binaryRepresentation = "0" + binaryRepresentation;  
-      digitalWrite(addressPins[i],LOW);
+      //binaryRepresentation = "0" + binaryRepresentation;  
+      digitalWrite(SNES_addressPins[i],LOW);
      }
      num = num / 2;
   }
-   
-  digitalWrite(CE,LOW);
-  digitalWrite(OE,LOW);
-  delayMicroseconds(1); //was 100
+  
+  //delayMicroseconds(100);
+  digitalWrite(SNES_CE,LOW);
+  //delayMicroseconds(100);
+  digitalWrite(SNES_OE,LOW);
+  //delayMicroseconds(100); //was 100
     
-  boolean readBit;
-  byte readByte;
+  boolean readBit = false;
+  byte readByte = 0;
     
   for (int d = 0 ; d < 8 ; d++) {
     readBit = digitalRead(ioPins[d]);
-    readBinartRepresentation = readBinartRepresentation + String(readBit);
     bitWrite(readByte,d,readBit);
+    readBit = false;
   }
-    
-  readHEXRepresentation = String(readByte,HEX);   
-  return readHEXRepresentation;
-  
-}
 
-void readTest() {
-  Serial.println("********* Starting ... ********");
-  delay(10000);
-  Serial.println("********* Read Test ... ********");
-
-  
-  pinMode(CE, OUTPUT);
-  pinMode(OE, OUTPUT);
-  
-  //digitalWrite(CE,HIGH);
-  //digitalWrite(OE,HIGH);
-  
+  /*
   for (int d = 0 ; d < 8 ; d++) {
-    pinMode(ioPins[d], INPUT); //INPUT_PULLUP 
+    pinMode(ioPins[d], OUTPUT); //OUTPUT
   }
 
-  //16384
-  for (int j = 0 ; j < maxAddressNumber ; j++) {
-    
-    digitalWrite(CE,HIGH);
-    digitalWrite(OE,HIGH);
-    delayMicroseconds(100);
-    
-    String binaryRepresentation = ""; 
-    String readBinartRepresentation = "";
-    String readHEXRepresentation = "";
-    
-    int num = j;
-    for (int i = 0 ; i < 15 ; i++) {
-        //int num = j;
-        if (num % 2) {
-          binaryRepresentation = "1" + binaryRepresentation;  
-          digitalWrite(addressPins[i],HIGH);
-        }else{
-          binaryRepresentation = "0" + binaryRepresentation;  
-          digitalWrite(addressPins[i],LOW);
-        }
-        num = num / 2;
-    }
-    //delay(100);
-    digitalWrite(CE,LOW);
-    digitalWrite(OE,LOW);
-    delayMicroseconds(100); //was 100
-    //Write FF on IO
-    
-    boolean readBit;
-    byte readByte;
-    
-    for (int d = 0 ; d < 8 ; d++) {
-      readBit = digitalRead(ioPins[d]);
-      readBinartRepresentation = readBinartRepresentation + String(readBit);
-      bitWrite(readByte,d,readBit);
-      
-    }
-    readHEXRepresentation = String(readByte,HEX);
-    Serial.println("Number "+String(j)+" -> "+binaryRepresentation);
-    Serial.println("Number "+String(j)+" -> "+readBinartRepresentation);  
-    Serial.println("Number "+String(j)+" -> "+readHEXRepresentation);    
-  
-    //return readHEXRepresentation;
+  for (int d = 0 ; d < 8 ; d++) {
+    digitalWrite(ioPins[d],LOW);
   }
+
+  for (int i = 0 ; i < 19 ; i++) {
+    digitalWrite(SNES_addressPins[i],LOW);  
+  }*/
+
+  //delayMicroseconds(1);
+ 
+ /*
+  writeBuffer[bufferIndex] = readByte;
+  
+  if (bufferIndex + 1 == BUFFER_SIZE) {
+    bufferIndex = 0;
+    dumpRomFile.write(writeBuffer,BUFFER_SIZE);
+    readSDPosition++;
+    readSDCardTest(readSDPosition,(1024 * readSDPosition) + 1);
+  }else{
+    bufferIndex++;
+  }*/
+    
+  return readByte;
 }
+
+//old loop with LCD too slow
+
+  //void loop() {
+  
+  //lcd.setCursor(0,0);
+  //lcd.print("ADDR = ");
+  //lcd.setCursor(7,0);
+  //lcd.print(String(j,HEX));
+  //lcd.print(j);
+  
+  //if ((j < maxAddressNumber) && (ElapsedTime <= 30000)){
+  //if ((j < maxAddressNumber)){
+  //  String hexData = readSNESInLoop();
+    //String hexData = "ff";
+    //lcd.setCursor(0,1);
+    //lcd.print("DATA = ");
+    //lcd.setCursor(7,1);
+    //lcd.print(hexData);
+  //  Serial.println(hexData);
+  //  j++;
+  
+ //   String time = String(calculateTime(),2);
+    //lcd.setCursor(12,1);
+    //lcd.print(time); 
+ // }else{
+    //Serial.println(j);
+    //dumpRomFile.close();
+ // }
+
+//old loop with LCD too slow
+
+  //void loop() {
+  
+  //lcd.setCursor(0,0);
+  //lcd.print("ADDR = ");
+  //lcd.setCursor(7,0);
+  //lcd.print(String(j,HEX));
+  //lcd.print(j);
+  
+  //if ((j < maxAddressNumber) && (ElapsedTime <= 30000)){
+  //if ((j < maxAddressNumber)){
+  //  String hexData = readSNESInLoop();
+    //String hexData = "ff";
+    //lcd.setCursor(0,1);
+    //lcd.print("DATA = ");
+    //lcd.setCursor(7,1);
+    //lcd.print(hexData);
+  //  Serial.println(hexData);
+  //  j++;
+  
+ //   String time = String(calculateTime(),2);
+    //lcd.setCursor(12,1);
+    //lcd.print(time); 
+ // }else{
+    //Serial.println(j);
+    //dumpRomFile.close();
+ // }

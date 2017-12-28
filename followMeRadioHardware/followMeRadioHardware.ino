@@ -31,13 +31,17 @@ void disableSound() {
   //channel selection
   for (int i = 0 ; i < 8 ; i++ ){
       digitalWrite(CLOCK,LOW);
+      delayMicroseconds(100);
       digitalWrite(DATA,LOW);
+      delayMicroseconds(100);
       digitalWrite(CLOCK,HIGH);
   }
   //atenuation disable
   for (int i = 0 ; i < 8 ; i++ ){
       digitalWrite(CLOCK,LOW);
+      delayMicroseconds(100);
       digitalWrite(DATA,HIGH);
+      delayMicroseconds(100);
       digitalWrite(CLOCK,HIGH);
   }
 
@@ -45,10 +49,24 @@ void disableSound() {
 }
 
 void addressFirstCardLowLoad() {
+    
     digitalWrite(OE_0,HIGH);
     digitalWrite(A_0,HIGH);
     digitalWrite(A_1,HIGH);
     digitalWrite(A_2,HIGH);
+
+    //Y0
+    //digitalWrite(OE_0,HIGH);
+    //digitalWrite(A_0,LOW);
+    //digitalWrite(A_1,LOW);
+    //digitalWrite(A_2,LOW);
+
+    
+    //Y1
+    //digitalWrite(OE_0,HIGH);
+    //digitalWrite(A_0,HIGH);
+    //digitalWrite(A_1,LOW);
+    //digitalWrite(A_2,LOW);
 }
 
 void addressHighLoad() {
@@ -60,14 +78,18 @@ void enableSound() {
   //channel selection
   for (int i = 0 ; i < 8 ; i++ ){
       digitalWrite(CLOCK,LOW);
+      delayMicroseconds(100);
       digitalWrite(DATA,LOW);
+      delayMicroseconds(100);
       digitalWrite(CLOCK,HIGH);
   }
   
   //atenuation disable
   for (int i = 0 ; i < 8 ; i++ ){
       digitalWrite(CLOCK,LOW);
+      delayMicroseconds(100);
       digitalWrite(DATA,LOW);
+      delayMicroseconds(100);
       digitalWrite(CLOCK,HIGH);
   }
   digitalWrite(CLOCK,LOW);
@@ -116,14 +138,19 @@ void writeWord()
 void loop() {
   //dataTransferTest();
   addressFirstCardLowLoad();
+  delayMicroseconds(100);
   enableSound();
+  delayMicroseconds(100);
   addressHighLoad();
-
-  delay(15000);
+  Serial.println("Enable");
+  delay(10000);
 
   addressFirstCardLowLoad();
+  delayMicroseconds(100);
   disableSound();
+  delayMicroseconds(100);
   addressHighLoad();
+  Serial.println("Disable");
 
-  delay(15000);
+  delay(10000);
 }
